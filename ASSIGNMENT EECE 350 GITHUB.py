@@ -1,57 +1,83 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Mon Feb 23 01:08:48 2026
-
-@author: User
-"""
-
 import sqlite3
 
-# Connect to SQLite (in memory for testing)
-conn = sqlite3.connect(':memory:')
-
-# this is important because foreign keys are OFF by default in SQLite
+conn = sqlite3.connect("students.db")
 conn.execute("PRAGMA foreign_keys = ON;")
-
 cursor = conn.cursor()
 
-# Helper function to inspect table contents
-def print_table(cursor, table_name):
-    cursor.execute(f"SELECT * FROM {table_name}")
-    rows = cursor.fetchall()
-    columns = [desc[0] for desc in cursor.description]
-
-    print(f"\nTable: {table_name}")
-    print(" | ".join(columns))
-    print("-" * 30)
-
-    for row in rows:
-        print(" | ".join(str(value) for value in row))
-
-# Create tables
 cursor.execute("""
-CREATE TABLE student (
+CREATE TABLE IF NOT EXISTS student (
     student_id INT PRIMARY KEY,
     name TEXT NOT NULL,
     age INT
 )
 """)
 
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS registered_courses (
+    student_id INT,
+    course_id INT,
+    PRIMARY KEY (student_id, course_id),
+    FOREIGN KEY (student_id) REFERENCES student(student_id)
+)
+""")
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS grades (
+    student_id INT,
+    course_id INT,
+    grade REAL,
+    PRIMARY KEY (student_id, course_id),
+    FOREIGN KEY (student_id) REFERENCES student(student_id)
+)
+""")
+
+cursor.execute("DELETE FROM grades")
+cursor.execute("DELETE FROM registered_courses")
+cursor.execute("DELETE FROM student")
+
 students = [
-    (1, 'Alice', 20),
-    (2, 'Bob', 22),
-    (3, 'Charlie', 21)
+    (1, "Alice", 20),
+    (2, "Bob", 22),
+    (3, "Charlie", 21)
 ]
 cursor.executemany("INSERT INTO student VALUES (?, ?, ?)", students)
 
+registered = [
+    (1, 101),
+    (1, 102),
+    (2, 101),
+    (3, 103)
+]
+cursor.executemany("INSERT INTO registered_courses VALUES (?, ?)", registered)
+
+grades_data = [
+    (1, 101, 85),
+    (1, 102, 92),
+    (2, 101, 78),
+    (3, 103, 88)
+]
+cursor.executemany("INSERT INTO grades VALUES (?, ?, ?)", grades_data)
+
 conn.commit()
 
-print_table(cursor, "student")
+cursor.execute("""
+SELECT g.student_id, g.course_id, g.grade
+FROM grades g
+JOIN (
+    SELECT student_id, MAX(grade) AS max_grade
+    FROM grades
+    GROUP BY student_id
+) mx
+ON g.student_id = mx.student_id AND g.grade = mx.max_grade
+ORDER BY g.student_id
+""")
 
-# Example SELECT query
-cursor.execute("SELECT * FROM student")
-print("\nResult of: SELECT * FROM student")
+print("Max grade per student:")
 for row in cursor.fetchall():
     print(row)
+
+student_id = 1
+cursor.execute("SELECT AVG(grade) FROM grades WHERE student_id = ?", (student_id,))
+print("Average grade of student 1:", cursor.fetchone()[0])
 
 conn.close()
